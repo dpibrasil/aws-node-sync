@@ -64,12 +64,16 @@ async function uploadDir(s3Path, bucketName) {
             const key =  path.relative(s3Path, filePath)
             const file = fs.statSync(filePath)
             const object = objects.find(object => object.Key.includes(key))
+
             if (!object || file.mtime >= object.LastModified) {
-                const result = await s3.putObject({
+                const result = await s3.upload({
                     Key: key,
                     Bucket: bucketName,
-                    Body: fs.createReadStream(filePath),
-                    Tagging: ''
+                    Body: fs.createReadStream(filePath)
+                }, { partSize: (process.env.PART_SIZE ?? 5) * 1024 * 1024 * 1024, queueSize: process.env.QUEUE_SIZE ?? 5})
+                .on('httpUploadProgress', (progress) => {
+                    const progressPercentage = (progress.loaded / progress.total * 100).toFixed(2)
+                    console.log(`[progress] ${progressPercentage}% uploading ${key}`)
                 }).promise()
                 addToLog(`[success] ${filePath} uploaded`)
                 return {type: 'success', result, history: {date: new Date().getTime(), key}}
