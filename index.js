@@ -59,7 +59,9 @@ async function uploadDir(s3Path, bucketName) {
         files = files.filter(file => !filterBy(exclude, file))
     }
 
-    const uploads = files.map(async (filePath) => {
+    let uploads = []
+
+    for (const filePath of files) {
         try {
             const key =  path.relative(s3Path, filePath)
             const file = fs.statSync(filePath)
@@ -70,23 +72,24 @@ async function uploadDir(s3Path, bucketName) {
                     Key: key,
                     Bucket: bucketName,
                     Body: fs.createReadStream(filePath)
-                }, { partSize: (process.env.PART_SIZE ?? 5) * 1024 * 1024 * 1024, queueSize: process.env.QUEUE_SIZE ?? 5})
+                }, { partSize: (process.env.PART_SIZE ?? 5) * 1024 * 1024, queueSize: process.env.QUEUE_SIZE ?? 5})
                 .on('httpUploadProgress', (progress) => {
                     const progressPercentage = (progress.loaded / progress.total * 100).toFixed(2)
                     console.log(`[progress] ${progressPercentage}% uploading ${key}`)
                 }).promise()
                 addToLog(`[success] ${filePath} uploaded`)
-                return {type: 'success', result, history: {date: new Date().getTime(), key}}
+                uploads.push({type: 'success', result, history: {date: new Date().getTime(), key}})
+            } else {
+                addToLog(`[success] ${filePath} already updated`)
+                uploads.push({type: 'success', history: {date: new Date().getTime(), key}})
             }
-            addToLog(`[success] ${filePath} already updated`)
-            return {type: 'success', history: {date: new Date().getTime(), key}}
         } catch (e) {
             addToLog(`[error] ${e.message} white uploading ${filePath}`)
-            return {type: 'error', filePath}
+            uploads.push({type: 'error', filePath})
         }
-    })
+    }
 
-    return Promise.all(uploads)
+    return uploads
 }
 
 uploadDir(path.resolve(process.env.BASE_PATH), process.env.AWS_BUCKET)
